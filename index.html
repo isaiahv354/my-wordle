@@ -1,0 +1,915 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Wordle</title> <style>
+        /* Define CSS variables for consistent theming */
+        :root {
+            --tile-size: 60px;
+            --tile-gap: 5px;
+            --color-correct: #6aaa64; /* Green for correct letters/digits */
+            --color-present: #c9b458; /* Yellow for present letters/digits */
+            --color-absent: #3a3a3c; /* Darker gray for absent letters/digits in dark mode */
+            --color-border: #565758; /* Darker border for tiles */
+            --color-text: #ffffff; /* White text for dark mode */
+            --color-background: #1a1a1b; /* Dark background color */
+            --font-family: 'Inter', 'Helvetica Neue', Helvetica, Arial, sans-serif; /* Use Inter font */
+            --modal-bg: rgba(0, 0, 0, 0.7); /* Semi-transparent black for modal overlay */
+            --modal-content-bg: #2a2a2b; /* Dark background for modal content */
+            --modal-border: #4a4a4b;
+        }
+
+        /* Basic body styling for centering and font */
+        body {
+            font-family: var(--font-family);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh; /* Full viewport height */
+            background-color: var(--color-background);
+            color: var(--color-text);
+            margin: 0;
+            padding: 20px;
+            box-sizing: border-box; /* Include padding in element's total width and height */
+        }
+
+        h1 {
+            color: var(--color-text);
+            margin-bottom: 20px;
+        }
+
+        #game-header {
+            width: 100%;
+            max-width: 500px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding: 0 10px; /* Some padding for header content */
+            box-sizing: border-box;
+        }
+
+        #how-to-play-button, #mode-toggle-button {
+            background: none;
+            border: 2px solid var(--color-text);
+            color: var(--color-text);
+            padding: 8px 15px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 0.9em;
+            font-weight: bold;
+            transition: background-color 0.2s, color 0.2s;
+            margin: 0 5px; /* Add some margin between buttons */
+        }
+
+        #how-to-play-button:hover, #mode-toggle-button:hover {
+            background-color: var(--color-text);
+            color: var(--color-background);
+        }
+
+        /* Game board grid layout */
+        #game-board {
+            display: grid;
+            grid-template-rows: repeat(6, var(--tile-size)); /* 6 rows for guesses */
+            grid-template-columns: repeat(5, var(--tile-size)); /* 5 columns for letters */
+            gap: var(--tile-gap); /* Gap between tiles */
+            margin-bottom: 20px;
+            border-radius: 8px; /* Rounded corners for the board */
+            overflow: hidden; /* Ensures child elements respect border-radius */
+        }
+
+        /* Individual tile styling */
+        .tile {
+            width: var(--tile-size);
+            height: var(--tile-size);
+            border: 2px solid var(--color-border);
+            border-radius: 8px; /* Rounded corners for tiles */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 2em;
+            font-weight: bold;
+            text-transform: uppercase;
+            box-sizing: border-box;
+            background-color: var(--color-background); /* Default tile background */
+            color: var(--color-text);
+            /* Smooth transitions for color changes */
+            transition: background-color 0.3s ease-in-out, color 0.3s ease-in-out, border-color 0.3s ease-in-out;
+        }
+
+        /* Tile states based on guess feedback */
+        .tile.correct {
+            background-color: var(--color-correct);
+            color: white;
+            border-color: var(--color-correct);
+        }
+
+        .tile.present {
+            background-color: var(--color-present);
+            color: white;
+            border-color: var(--color-present);
+        }
+
+        .tile.absent {
+            background-color: var(--color-absent);
+            color: white;
+            border-color: var(--color-absent);
+        }
+
+        .tile.empty {
+            background-color: var(--color-background);
+            color: var(--color-text);
+            border-color: var(--color-border);
+        }
+
+        /* Keyboard layout */
+        #keyboard-alphabetic, #keyboard-numeric {
+            display: flex;
+            flex-direction: column;
+            gap: 8px; /* Gap between keyboard rows */
+            margin-top: 20px;
+            width: 100%;
+            max-width: 500px; /* Limit keyboard width for better aesthetics */
+        }
+
+        .keyboard-row {
+            display: flex;
+            justify-content: center;
+            gap: 6px; /* Gap between keys in a row */
+        }
+
+        /* Individual key styling */
+        .key {
+            background-color: var(--color-border); /* Default key background */
+            color: var(--color-text);
+            font-size: 1em;
+            font-weight: bold;
+            padding: 15px 10px;
+            border-radius: 8px; /* Rounded corners for keys */
+            cursor: pointer;
+            flex-grow: 1; /* Keys grow to fill space */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            text-transform: uppercase;
+            user-select: none; /* Prevent text selection on keys */
+            transition: background-color 0.2s ease-in-out, color 0.2s ease-in-out;
+        }
+
+        .key:active {
+            background-color: #787c7e; /* Darker shade when pressed */
+        }
+
+        .key.large {
+            flex-basis: auto; /* Allow content to dictate size for Enter/Backspace */
+            min-width: 60px; /* Minimum width for larger keys */
+        }
+
+        /* Key states based on letter/digit feedback */
+        .key.correct-key {
+            background-color: var(--color-correct);
+            color: white;
+        }
+        .key.present-key {
+            background-color: var(--color-present);
+            color: white;
+        }
+        .key.absent-key {
+            background-color: var(--color-absent);
+            color: white;
+        }
+
+        /* Message display styling */
+        #message {
+            margin-top: 20px;
+            font-size: 1.2em;
+            font-weight: bold;
+            color: var(--color-text);
+            text-align: center;
+            min-height: 25px; /* Reserve space to prevent layout shifts */
+        }
+
+        /* Play Again button styling */
+        #reset-button {
+            margin-top: 20px;
+            padding: 10px 20px;
+            font-size: 1em;
+            background-color: var(--color-correct);
+            color: white;
+            border: none;
+            border-radius: 8px; /* Rounded corners */
+            cursor: pointer;
+            display: none; /* Hidden by default, shown after game ends */
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); /* Subtle shadow */
+            transition: background-color 0.2s ease-in-out, opacity 0.2s ease-in-out;
+        }
+        #reset-button:hover {
+            opacity: 0.9;
+            background-color: #5b9454; /* Slightly darker green on hover */
+        }
+
+        /* How to Play Modal Styling */
+        .modal-overlay {
+            display: none; /* Hidden by default */
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: var(--modal-bg);
+            backdrop-filter: blur(5px); /* Optional: blur background */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000; /* Ensure it's on top of everything */
+        }
+
+        .modal-content {
+            background-color: var(--modal-content-bg);
+            color: var(--color-text);
+            padding: 25px;
+            border-radius: 10px;
+            width: 90%;
+            max-width: 500px;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+            position: relative;
+            animation: fadeIn 0.3s ease-out; /* Simple fade-in effect */
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .modal-content h2 {
+            margin-top: 0;
+            border-bottom: 1px solid var(--modal-border);
+            padding-bottom: 10px;
+            text-align: center;
+            font-size: 1.8em;
+        }
+
+        .modal-content p {
+            margin-bottom: 15px;
+            line-height: 1.5;
+            font-size: 0.95em;
+        }
+
+        .modal-content strong {
+            color: var(--color-text); /* Ensure strong text is visible */
+        }
+
+        .modal-content .example-row {
+            display: flex;
+            margin-bottom: 10px;
+        }
+
+        .modal-content .example-tile {
+            width: 40px;
+            height: 40px;
+            border: 2px solid var(--color-border);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 1.5em;
+            font-weight: bold;
+            text-transform: uppercase;
+            box-sizing: border-box;
+            border-radius: 4px;
+            margin-right: 5px;
+        }
+
+        /* Example tile colors for instructions */
+        .modal-content .example-tile.ex-correct {
+            background-color: var(--color-correct);
+            border-color: var(--color-correct);
+            color: white;
+        }
+        .modal-content .example-tile.ex-present {
+            background-color: var(--color-present);
+            border-color: var(--color-present);
+            color: white;
+        }
+        .modal-content .example-tile.ex-absent {
+            background-color: var(--color-absent);
+            border-color: var(--color-absent);
+            color: white;
+        }
+        .modal-content .example-tile.ex-empty {
+            background-color: var(--color-background);
+            border-color: var(--color-border);
+            color: var(--color-text);
+        }
+
+        .modal-close-button {
+            position: absolute;
+            top: 10px;
+            right: 15px;
+            font-size: 2em;
+            color: var(--color-text);
+            background: none;
+            border: none;
+            cursor: pointer;
+            padding: 5px;
+            line-height: 1;
+        }
+        .modal-close-button:hover {
+            color: #ccc;
+        }
+
+
+        /* Responsive adjustments for smaller screens */
+        @media (max-width: 600px) {
+            :root {
+                --tile-size: 50px; /* Smaller tiles on small screens */
+                --tile-gap: 4px;
+            }
+            .key {
+                padding: 10px 5px; /* Smaller padding for keys */
+                font-size: 0.9em;
+            }
+            .key.large {
+                min-width: 45px; /* Smaller min-width for large keys */
+            }
+            body {
+                padding: 10px; /* Reduce overall padding */
+            }
+            .modal-content {
+                padding: 20px;
+            }
+            .modal-content .example-tile {
+                width: 35px;
+                height: 35px;
+                font-size: 1.2em;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="game-header">
+        <button id="mode-toggle-button">Play Numberle</button>
+        <h1>Wordle</h1> <button id="how-to-play-button">How to Play</button>
+    </div>
+
+    <div id="game-board"></div>
+
+    <div id="message"></div>
+
+    <div id="keyboard-alphabetic">
+        <div class="keyboard-row">
+            <div class="key" data-key="Q">Q</div>
+            <div class="key" data-key="W">W</div>
+            <div class="key" data-key="E">E</div>
+            <div class="key" data-key="R">R</div>
+            <div class="key" data-key="T">T</div>
+            <div class="key" data-key="Y">Y</div>
+            <div class="key" data-key="U">U</div>
+            <div class="key" data-key="I">I</div>
+            <div class="key" data-key="O">O</div>
+            <div class="key" data-key="P">P</div>
+        </div>
+        <div class="keyboard-row">
+            <div class="key" data-key="A">A</div>
+            <div class="key" data-key="S">S</div>
+            <div class="key" data-key="D">D</div>
+            <div class="key" data-key="F">F</div>
+            <div class="key" data-key="G">G</div>
+            <div class="key" data-key="H">H</div>
+            <div class="key" data-key="J">J</div>
+            <div class="key" data-key="K">K</div>
+            <div class="key" data-key="L">L</div>
+        </div>
+        <div class="keyboard-row">
+            <div class="key large" data-key="ENTER">Enter</div>
+            <div class="key" data-key="Z">Z</div>
+            <div class="key" data-key="X">X</div>
+            <div class="key" data-key="C">C</div>
+            <div class="key" data-key="V">V</div>
+            <div class="key" data-key="B">B</div>
+            <div class="key" data-key="N">N</div>
+            <div class="key" data-key="M">M</div>
+            <div class="key large" data-key="BACKSPACE">Backspace</div>
+        </div>
+    </div>
+
+    <div id="keyboard-numeric" style="display: none;">
+        <div class="keyboard-row">
+            <div class="key" data-key="1">1</div>
+            <div class="key" data-key="2">2</div>
+            <div class="key" data-key="3">3</div>
+        </div>
+        <div class="keyboard-row">
+            <div class="key" data-key="4">4</div>
+            <div class="key" data-key="5">5</div>
+            <div class="key" data-key="6">6</div>
+        </div>
+        <div class="keyboard-row">
+            <div class="key" data-key="7">7</div>
+            <div class="key" data-key="8">8</div>
+            <div class="key" data-key="9">9</div>
+        </div>
+        <div class="keyboard-row">
+            <div class="key large" data-key="ENTER">Enter</div>
+            <div class="key" data-key="0">0</div>
+            <div class="key large" data-key="BACKSPACE">Backspace</div>
+        </div>
+    </div>
+
+    <button id="reset-button">Play Again</button>
+
+    <div id="howToPlayModal" class="modal-overlay" style="display: none;">
+        <div class="modal-content">
+            <button class="modal-close-button" id="closeModalButton">&times;</button>
+            <h2 id="how-to-play-title">How To Play Wordle</h2>
+            <p>Guess the **WORDLE** in 6 tries.</p>
+            <p>Each guess must be a valid 5-letter word. Hit the enter button to submit.</p>
+            <p>After each guess, the color of the tiles will change to show how close your guess was to the word.</p>
+
+            <hr style="border-color: var(--modal-border); margin: 20px 0;">
+
+            <h3>Examples</h3>
+            <p><strong><span style="color: var(--color-correct);">Green</span></strong> indicates the letter is in the word and in the correct spot.</p>
+            <div class="example-row">
+                <div class="example-tile ex-correct">W</div>
+                <div class="example-tile ex-empty">E</div>
+                <div class="example-tile ex-empty">A</div>
+                <div class="example-tile ex-empty">R</div>
+                <div class="example-tile ex-empty">Y</div>
+            </div>
+            <p>The letter **W** is in the word and in the correct spot.</p>
+
+            <p><strong><span style="color: var(--color-present);">Yellow</span></strong> indicates the letter is in the word but in the wrong spot.</p>
+            <div class="example-row">
+                <div class="example-tile ex-empty">P</div>
+                <div class="example-tile ex-present">I</div>
+                <div class="example-tile ex-empty">L</div>
+                <div class="example-tile ex-empty">O</div>
+                <div class="example-tile ex-empty">T</div>
+            </div>
+            <p>The letter **I** is in the word but in the wrong spot.</p>
+
+            <p><strong><span style="color: var(--color-absent);">Gray</span></strong> indicates the letter is not in the word in any spot.</p>
+            <div class="example-row">
+                <div class="example-tile ex-empty">V</div>
+                <div class="example-tile ex-empty">A</div>
+                <div class="example-tile ex-empty">G</div>
+                <div class="example-tile ex-absent">U</div>
+                <div class="example-tile ex-empty">E</div>
+            </div>
+            <p>The letter **U** is not in the word in any spot.</p>
+
+            <hr style="border-color: var(--modal-border); margin: 20px 0;">
+            <p>When you refresh the page, the word changes!</p>
+        </div>
+    </div>
+
+    <script>
+        // List of possible 5-letter words (all uppercase for consistency)
+        const words = [
+            "ABACK", "ABATE", "ABOVE", "ABUSE", "ACUTE", "ADAPT", "ADEPT", "ADMIT", "ADOPT", "ADORE",
+            "ADULT", "AFTER", "AGAIN", "AGILE", "AGREE", "AISLE", "ALARM", "ALERT", "ALIKE", "ALIVE",
+            "ALLOW", "ALONE", "ALONG", "ALTER", "AMBER", "AMPLY", "AMUSE", "ANGEL", "ANGER", "ANGLE",
+            "ANGRY", "ANIME", "ANKLE", "APART", "APPLE", "APPLY", "ARENA", "ARGUE", "ARISE", "ARRAY",
+            "ASIDE", "ASSET", "ATLAS", "AUDIO", "AUDIT", "AVOID", "AWAKE", "AWARE", "AWFUL", "BADGE",
+            "BAKER", "BALDY", "BASIC", "BASIS", "BATCH", "BATHS", "BEACH", "BEGIN", "BEGUN", "BEING",
+            "BELOW", "BIBLE", "BIRTH", "BLACK", "BLAME", "BLANK", "BLEAK", "BLEND", "BLESS", "BLIND",
+            "BLOCK", "BLOOD", "BLOOM", "BOARD", "BOAST", "BONES", "BONUS", "BOOST", "BOOTH", "BOUND",
+            "BOWEL", "BRAIN", "BRAND", "BRAVE", "BREAD", "BREAK", "BREED", "BRIEF", "BRING", "BROAD",
+            "BROWN", "BUILD", "BULLY", "BUNCH", "BURST", "CABIN", "CABLE", "CACHE", "CAFFE", "CAKES",
+            "CALVE", "CAMEL", "CANAL", "CANDY", "CANOE", "CANON", "CARGO", "CARRY", "CATCH", "CAUSE",
+            "CEASE", "CHAIN", "CHAIR", "CHALK", "CHAMP", "CHANT", "CHAOS", "CHARM", "CHASE", "CHEAP",
+            "CHEAT", "CHECK", "CHEEK", "CHEER", "CHEST", "CHIEF", "CHILD", "CHILL", "CHINA", "CHIPS",
+            "CHOIR", "CHOKE", "CHORD", "CIGAR", "CIVIL", "CLAIM", "CLAMP", "CLASH", "CLASS", "CLEAN",
+            "CLEAR", "CLERK", "CLICK", "CLIFF", "CLIMB", "CLING", "CLOCK", "CLOSE", "CLOTH", "CLOUD",
+            "CLOWN", "COAST", "COBRA", "COLON", "COMMA", "COMFY", "CRANE", "CRAVE", "CRAZY", "CREAM",
+            "CRIME", "CRISP", "CROWN", "CRUDE", "CRUEL", "CRUMB", "CRUSH", "CUBIC", "CYCLE", "DAISY",
+            "DANCE", "DANDY", "DREAM", "DRESS", "DRILL", "DRINK", "DRIVE", "DROWN", "DRUNK", "DRYER",
+            "DUSTY", "EAGER", "EARLY", "EARTH", "EASEL", "EATEN", "EBONY", "EIGHT", "ELBOW", "ELDER",
+            "ELECT", "ELITE", "EMBAR", "EMBED", "EMBER", "EMPTY", "ENJOY", "ENTER", "ENTRY", "EQUAL",
+            "ERROR", "ESSAY", "EVENT", "EVERY", "EXACT", "EXCEL", "EXIST", "EXTRA", "FABLE", "FACET",
+            "FAIRY", "FAITH", "FALSE", "FANCY", "FIGHT", "FILTH", "FINAL", "FINCH", "FIRST", "FIXED",
+            "FLAME", "FLASH", "FLASK", "FLEET", "FLOOR", "FLOUR", "FLUID", "FOCUS", "FORGE", "FORTH",
+            "FORTY", "FORUM", "FOUND", "FRAME", "FRESH", "FRIED", "FRONT", "FROST", "FROZE", "FRUIT",
+            "FUNNY", "GAILY", "GAINS", "GAMER", "GAMMA", "GHOST", "GIANT", "GIVEN", "GLASS", "GLEAM",
+            "GLORY", "GLOVE", "GLOWS", "GODLY", "GOODS", "GOOSE", "GRACE", "GRADE", "GRAND", "GRAPE",
+            "GRASS", "GRAVE", "GREAT", "GREEN", "GRIEF", "GRILL", "GRIND", "GROUP", "GROWL", "GUARD",
+            "GUESS", "GUEST", "GUIDE", "GUILTY", "HABIT", "HAIRY", "HAPPY", "HARDY", "HARSH", "HASTE",
+            "HATCH", "HEART", "HEAVY", "HELLO", "HENCE", "HILLS", "HINTZ", "HIRED", "HOLLY", "HONEY",
+            "HONOR", "HORSE", "HOTEL", "HOUSE", "HUMAN", "HUMID", "HURRY", "IDEAL", "IDIOT", "IMAGE",
+            "IMPLY", "INDEX", "INFER", "INLAY", "INPUT", "IRONY", "ISLAND", "IVORY", "JAZZY", "JELLY",
+            "JEWEL", "JOLLY", "JUMBO", "JUMPS", "JUNKY", "KNEEL", "KNIFE", "KNOCK", "KNOWN", "LABOR",
+            "LAKES", "LATCH", "LATER", "LATIN", "LAUGH", "LAYER", "LEARN", "LEGAL", "LEMON", "LEVEL",
+            "LIGHT", "LIMIT", "LINEN", "LIONS", "LITER", "LIVES", "LIVER", "LOCAL", "LOGIC", "LOOSE",
+            "LORRY", "LUCKY", "LUNCH", "LUNGE", "MAGIC", "MAJOR", "MAKER", "MANOR", "MAPLE", "MARCH",
+            "MATCH", "MIGHT", "MINOR", "MINUS", "MIXED", "MODEL", "MOIST", "MONEY", "MONTH", "MOODY",
+            "MORAL", "MOTOR", "MOUNT", "MOUSE", "MOUTH", "MOVIE", "MULTI", "MUSIC", "NAKED", "NARROW",
+            "NIGHT", "NINTH", "NOBLE", "NOISE", "NORTH", "NOVEL", "NURSE", "OCEAN", "OFFER", "OFTEN",
+            "OLIVE", "ONION", "OPERA", "ORDER", "OTHER", "OUGHT", "OUNCE", "OUTER", "OVALS", "OWNER",
+            "PAGES", "PAINT", "PANEL", "PAPER", "PARKS", "PARTY", "PAUSE", "PEACE", "PHASE", "PHONE",
+            "PHOTO", "PIANO", "PIECE", "PILOT", "PINCH", "PITCH", "PLACE", "PLAIN", "PLANE", "PLANT",
+            "PLATE", "POINT", "POKER", "POLAR", "POWER", "PRESS", "PRICE", "PRIDE", "PRIME", "PRINT",
+            "PRIZE", "PROOF", "PROUD", "PROVE", "PULSE", "PUPIL", "PUREE", "PURSE", "QUALM", "QUICK",
+            "QUIET", "QUILT", "QUITE", "QUOTA", "RADIO", "RAISE", "RANCH", "RANDY", "RANGE", "RAPID",
+            "RAVEN", "REACH", "READY", "REALM", "REBEL", "REFER", "REIGN", "RELAX", "RELAY", "RENEW",
+            "REPLY", "RIDGE", "RIGHT", "RIGID", "RIVER", "ROADS", "ROAST", "ROBOT", "ROUGH", "ROUND",
+            "ROVER", "ROYAL", "RURAL", "RUSTY", "SADLY", "SAINT", "SALAD", "SALTY", "SCARY", "SCENE",
+            "SCOOP", "SCOPE", "SCORE", "SCOUT", "SCRAP", "SENSE", "SERVE", "SHADE", "SHAKE", "SHAPE",
+            "SHARE", "SHARP", "SHEEP", "SHEER", "SHELF", "SHELL", "SHIFT", "SHINE", "SHIRT", "SHOCK",
+            "SHOOT", "SHORE", "SHORT", "SHOUT", "SHOWN", "SHRUG", "SIGHT", "SIGNS", "SILKY", "SINKY",
+            "SIXTH", "SKILL", "SKIRT", "SLACK", "SLEEP", "SLEET", "SLIDE", "SLING", "SLOPE", "SMALL",
+            "SMART", "SMELL", "SMILE", "SMOKE", "SNAKE", "SNOWY", "SOAPY", "SOLAR", "SOLID", "SOLVE",
+            "SOUND", "SOUTH", "SPACE", "SPARE", "SPELL", "SPEND", "SPICE", "SPINY", "SPLIT", "SPOIL",
+            "SPORT", "SPRAY", "SQUAD", "SQUAT", "STACK", "STAFF", "STAGE", "STAIN", "STAIR", "STAKE",
+            "STALE", "STAND", "START", "STATE", "STEAL", "STEAM", "STEEL", "STEEP", "STERN", "STICK",
+            "STILL", "STING", "STOCK", "STONE", "STORE", "STORM", "STORY", "STRAP", "STRAW", "STRIP",
+            "STUDY", "STUFF", "STYLE", "SUGAR", "SULPH", "SUPER", "SWEAT", "SWEEP", "SWEET", "SWELL",
+            "SWIFT", "SWING", "SWIRL", "SYRUP", "TABLE", "TAKES", "TALES", "TALKS", "TANGY", "TANGO",
+            "TAPES", "TASTE", "TASTY", "TEACH", "TEAMS", "TEMPO", "TENSE", "TENTS", "THANK", "THEIR",
+            "THEME", "THERE", "THICK", "THING", "THINK", "THIRD", "THORN", "THREE", "THROW", "TIGHT",
+            "TIMES", "TINY", "TIRED", "TITLE", "TODAY", "TOKEN", "TOMOR", "TONES", "TOOTH", "TOPIC",
+            "TOTAL", "TOUCH", "TOUGH", "TOWEL", "TOWER", "TOXIC", "TRACE", "TRACK", "TRADE", "TRAIL",
+            "TRAIN", "TRASH", "TREAT", "TREND", "TRIAL", "TRIBE", "TRICK", "TRUTH", "TULIP", "TUMOR",
+            "TWEET", "TWICE", "TWINE", "TWIST", "TYPED", "ULTRA", "UNCLE", "UNDER", "UNION", "UNTIL",
+            "UPPER", "URBAN", "USAGE", "USUAL", "VALID", "VALUE", "VAPOR", "VAULT", "VEGAN", "VENOM",
+            "VENUE", "VERGE", "VIDEO", "VIEWS", "VILLA", "VINEW", "VIRUS", "VISIT", "VITAL", "VIVID",
+            "VOICE", "VOTER", "WAGES", "WAIST", "WAITS", "WALKS", "WALLS", "WANTS", "WARMS", "WASTE",
+            "WATCH", "WATER", "WEARY", "WEAVE", "WEEDS", "WEIGH", "WEIRD", "WHEAT", "WHEEL", "WHERE",
+            "WHICH", "WHILE", "WHITE", "WHOLE", "WHOSE", "WIDEN", "WIDER", "WIDTH", "WILDY", "WILLY",
+            "WINDY", "WINGS", "WINKS", "WINTS", "WIPED", "WIRES", "WISEL", "WISHY", "WOMAN", "WOMEN",
+            "WONDER", "WOODS", "WORDY", "WORLD", "WORRY", "WORSE", "WORST", "WORTH", "WOULD", "WOUND",
+            "WRAPS", "WRIST", "WRITE", "WRONG", "YACHT", "YARDS", "YEARN", "YEARS", "YEAST", "YELLS",
+            "YOUNG", "YOUTH", "ZEBRA", "ZESTY", "ZONAL", "ZONES", "ZONKS"
+        ];
+        // For Numberle, we'll generate random 5-digit numbers.
+        const maxAttempts = 6; // Total number of guesses allowed
+        const codeLength = 5;  // Length of the secret word/number
+
+        let secretCode = '';    // The word/number to be guessed
+        let currentGuess = '';  // The user's current input for the row
+        let currentRow = 0;     // The current row (attempt) the user is on
+        let gameEnded = false;  // Flag to indicate if the game is over
+        let gameMode = 'wordle'; // 'wordle' or 'numberle'
+
+        // Get DOM elements
+        const gameTitle = document.querySelector('h1');
+        const gameBoard = document.getElementById('game-board');
+        const messageDisplay = document.getElementById('message');
+        const keyboardAlphabetic = document.getElementById('keyboard-alphabetic');
+        const keyboardNumeric = document.getElementById('keyboard-numeric');
+        const resetButton = document.getElementById('reset-button');
+        const howToPlayButton = document.getElementById('how-to-play-button');
+        const modeToggleButton = document.getElementById('mode-toggle-button');
+        const howToPlayModal = document.getElementById('howToPlayModal');
+        const closeModalButton = document.getElementById('closeModalButton');
+        const howToPlayTitle = document.getElementById('how-to-play-title');
+        const howToPlayContent = howToPlayModal.querySelector('.modal-content');
+
+
+        /**
+         * Initializes or resets the game state based on the current game mode.
+         */
+        function initializeGame() {
+            currentGuess = '';
+            currentRow = 0;
+            gameEnded = false;
+            messageDisplay.textContent = ''; // Clear any previous messages
+            resetButton.style.display = 'none'; // Hide play again button
+            resetKeyboardColors(); // Reset keyboard key colors
+            createGrid(); // Re-create the visual grid
+
+            if (gameMode === 'wordle') {
+                secretCode = words[Math.floor(Math.random() * words.length)];
+                gameTitle.textContent = 'Wordle'; // Changed title here
+                modeToggleButton.textContent = 'Play Numberle';
+                keyboardAlphabetic.style.display = 'flex';
+                keyboardNumeric.style.display = 'none';
+            } else { // gameMode === 'numberle'
+                // Generate a random 5-digit number (as a string)
+                secretCode = Math.floor(10000 + Math.random() * 90000).toString();
+                gameTitle.textContent = 'Numberle'; // Changed title here
+                modeToggleButton.textContent = 'Play Wordle';
+                keyboardAlphabetic.style.display = 'none';
+                keyboardNumeric.style.display = 'flex';
+            }
+            // console.log("Secret Code:", secretCode); // For debugging
+        }
+
+        /**
+         * Creates the visual grid of tiles for the game board.
+         */
+        function createGrid() {
+            gameBoard.innerHTML = ''; // Clear any existing tiles
+            for (let i = 0; i < maxAttempts; i++) {
+                for (let j = 0; j < codeLength; j++) {
+                    const tile = document.createElement('div');
+                    tile.classList.add('tile');
+                    tile.classList.add('empty'); // Start as empty
+                    tile.id = `tile-${i}-${j}`; // Assign unique ID for easy access
+                    gameBoard.appendChild(tile);
+                }
+            }
+        }
+
+        /**
+         * Updates the text content of the tiles in the current guess row.
+         */
+        function updateGrid() {
+            for (let i = 0; i < codeLength; i++) {
+                const tile = document.getElementById(`tile-${currentRow}-${i}`);
+                // Set tile text to current guess letter/digit or empty string
+                tile.textContent = currentGuess[i] || '';
+                // Add/remove 'empty' class based on whether the tile has content
+                if (currentGuess[i]) {
+                    tile.classList.remove('empty');
+                } else {
+                    tile.classList.add('empty');
+                }
+            }
+        }
+
+        /**
+         * Handles keyboard input (physical or on-screen).
+         * @param {string} key - The key pressed (e.g., "A", "ENTER", "BACKSPACE", "1").
+         */
+        function handleKeyPress(key) {
+            if (gameEnded) return; // Ignore input if game is over
+            if (howToPlayModal.style.display === 'flex') return; // Ignore input if modal is open
+
+            // Determine valid input characters based on game mode
+            let validInputRegex;
+            if (gameMode === 'wordle') {
+                validInputRegex = /[A-Z]/;
+            } else { // numberle
+                validInputRegex = /[0-9]/;
+            }
+
+            if (key === 'BACKSPACE') {
+                currentGuess = currentGuess.slice(0, -1); // Remove last character
+            } else if (key === 'ENTER') {
+                if (currentGuess.length === codeLength) {
+                    checkGuess(); // Process the guess if it's 5 characters long
+                } else {
+                    showMessage('Not enough characters!'); // Display error message
+                }
+            } else if (key.length === 1 && key.match(validInputRegex) && currentGuess.length < codeLength) {
+                // Only allow single valid characters if guess is not full
+                currentGuess += key;
+            }
+            updateGrid(); // Update the visual display after input
+        }
+
+        /**
+         * Checks the user's current guess against the secret code and provides feedback.
+         * Updates tile colors and keyboard key colors.
+         */
+        function checkGuess() {
+            const guess = currentGuess;
+
+            // Mode-specific validation
+            if (gameMode === 'wordle' && !words.includes(guess)) {
+                showMessage('Invalid word.');
+                return; // Stop execution if the word is not valid
+            }
+            // For Numberle, any 5-digit number is considered "valid" for submission,
+            // as there's no predefined list of "valid" numbers.
+
+            const feedback = Array(codeLength).fill(''); // Array to store 'correct', 'present', or 'absent'
+            let secretCodeChars = secretCode.split(''); // Mutable copy of secret code characters
+
+            // First pass: Identify 'correct' (green) characters
+            for (let i = 0; i < codeLength; i++) {
+                if (guess[i] === secretCodeChars[i]) {
+                    feedback[i] = 'correct';
+                    secretCodeChars[i] = null; // Mark character as used in secretCodeChars
+                }
+            }
+
+            // Second pass: Identify 'present' (yellow) and 'absent' (gray) characters
+            for (let i = 0; i < codeLength; i++) {
+                if (feedback[i] === '') { // Only process if not already marked 'correct'
+                    const charIndexInSecret = secretCodeChars.indexOf(guess[i]);
+                    if (charIndexInSecret > -1) {
+                        feedback[i] = 'present';
+                        secretCodeChars[charIndexInSecret] = null; // Mark character as used
+                    } else {
+                        feedback[i] = 'absent';
+                    }
+                }
+            }
+
+            // Apply CSS classes to tiles and keyboard keys based on feedback
+            for (let i = 0; i < codeLength; i++) {
+                const tile = document.getElementById(`tile-${currentRow}-${i}`);
+                tile.classList.remove('empty'); // Remove empty class
+                tile.classList.add(feedback[i]); // Add feedback class (correct, present, absent)
+
+                const keyElement = document.querySelector(`.key[data-key="${guess[i]}"]`);
+                if (keyElement) {
+                    // Prioritize 'correct' over 'present' over 'absent' for keyboard colors
+                    if (feedback[i] === 'correct') {
+                        keyElement.classList.add('correct-key');
+                    } else if (feedback[i] === 'present' && !keyElement.classList.contains('correct-key')) {
+                        keyElement.classList.add('present-key');
+                    } else if (feedback[i] === 'absent' && !keyElement.classList.contains('correct-key') && !keyElement.classList.contains('present-key')) {
+                        keyElement.classList.add('absent-key');
+                    }
+                }
+            }
+
+            // Check for game end conditions
+            if (guess === secretCode) {
+                showMessage(`You guessed the ${gameMode === 'wordle' ? 'word' : 'number'}! It was ${secretCode}!`, true);
+                gameEnded = true;
+                resetButton.style.display = 'block'; // Show play again button
+            } else if (currentRow === maxAttempts - 1) {
+                showMessage(`Game over! The ${gameMode === 'wordle' ? 'word' : 'number'} was ${secretCode}.`, true);
+                gameEnded = true;
+                resetButton.style.display = 'block'; // Show play again button
+            } else {
+                currentRow++; // Move to the next row for the next guess
+                currentGuess = ''; // Clear current guess input
+            }
+        }
+
+        /**
+         * Displays a temporary or permanent message to the user.
+         * @param {string} msg - The message to display.
+         * @param {boolean} [isPermanent=false] - If true, message stays until cleared manually.
+         */
+        function showMessage(msg, isPermanent = false) {
+            messageDisplay.textContent = msg;
+            if (!isPermanent) {
+                // Clear message after 2 seconds if not permanent
+                setTimeout(() => {
+                    messageDisplay.textContent = '';
+                }, 2000);
+            }
+        }
+
+        /**
+         * Resets the color classes of all keyboard keys.
+         */
+        function resetKeyboardColors() {
+            document.querySelectorAll('.key').forEach(key => {
+                key.classList.remove('correct-key', 'present-key', 'absent-key');
+            });
+        }
+
+        /**
+         * Toggles between Wordle and Numberle game modes.
+         */
+        function switchGameMode() {
+            if (gameMode === 'wordle') {
+                gameMode = 'numberle';
+                howToPlayTitle.textContent = 'How To Play Numberle';
+                howToPlayContent.innerHTML = `
+                    <button class="modal-close-button" id="closeModalButton">&times;</button>
+                    <h2>How To Play Numberle</h2>
+                    <p>Guess the **NUMBER** in 6 tries.</p>
+                    <p>Each guess must be a 5-digit number. Hit the enter button to submit.</p>
+                    <p>After each guess, the color of the tiles will change to show how close your guess was to the number.</p>
+
+                    <hr style="border-color: var(--modal-border); margin: 20px 0;">
+
+                    <h3>Examples</h3>
+                    <p><strong><span style="color: var(--color-correct);">Green</span></strong> indicates the digit is in the number and in the correct spot.</p>
+                    <div class="example-row">
+                        <div class="example-tile ex-correct">1</div>
+                        <div class="example-tile ex-empty">2</div>
+                        <div class="example-tile ex-empty">3</div>
+                        <div class="example-tile ex-empty">4</div>
+                        <div class="example-tile ex-empty">5</div>
+                    </div>
+                    <p>The digit **1** is in the number and in the correct spot.</p>
+
+                    <p><strong><span style="color: var(--color-present);">Yellow</span></strong> indicates the digit is in the number but in the wrong spot.</p>
+                    <div class="example-row">
+                        <div class="example-tile ex-empty">6</div>
+                        <div class="example-tile ex-present">7</div>
+                        <div class="example-tile ex-empty">8</div>
+                        <div class="example-tile ex-empty">9</div>
+                        <div class="example-tile ex-empty">0</div>
+                    </div>
+                    <p>The digit **7** is in the number but in the wrong spot.</p>
+
+                    <p><strong><span style="color: var(--color-absent);">Gray</span></strong> indicates the digit is not in the number in any spot.</p>
+                    <div class="example-row">
+                        <div class="example-tile ex-empty">2</div>
+                        <div class="example-tile ex-empty">4</div>
+                        <div class="example-tile ex-empty">6</div>
+                        <div class="example-tile ex-absent">8</div>
+                        <div class="example-tile ex-empty">0</div>
+                    </div>
+                    <p>The digit **8** is not in the number in any spot.</p>
+
+                    <hr style="border-color: var(--modal-border); margin: 20px 0;">
+                    <p>When you refresh the page, the number changes!</p>
+                `;
+                // Re-attach close button listener for dynamically updated content
+                document.getElementById('closeModalButton').addEventListener('click', () => {
+                    howToPlayModal.style.display = 'none';
+                });
+
+            } else {
+                gameMode = 'wordle';
+                howToPlayTitle.textContent = 'How To Play Wordle';
+                howToPlayContent.innerHTML = `
+                    <button class="modal-close-button" id="closeModalButton">&times;</button>
+                    <h2>How To Play Wordle</h2>
+                    <p>Guess the **WORDLE** in 6 tries.</p>
+                    <p>Each guess must be a valid 5-letter word. Hit the enter button to submit.</p>
+                    <p>After each guess, the color of the tiles will change to show how close your guess was to the word.</p>
+
+                    <hr style="border-color: var(--modal-border); margin: 20px 0;">
+
+                    <h3>Examples</h3>
+                    <p><strong><span style="color: var(--color-correct);">Green</span></strong> indicates the letter is in the word and in the correct spot.</p>
+                    <div class="example-row">
+                        <div class="example-tile ex-correct">W</div>
+                        <div class="example-tile ex-empty">E</div>
+                        <div class="example-tile ex-empty">A</div>
+                        <div class="example-tile ex-empty">R</div>
+                        <div class="example-tile ex-empty">Y</div>
+                    </div>
+                    <p>The letter **W** is in the word and in the correct spot.</p>
+
+                    <p><strong><span style="color: var(--color-present);">Yellow</span></strong> indicates the letter is in the word but in the wrong spot.</p>
+                    <div class="example-row">
+                        <div class="example-tile ex-empty">P</div>
+                        <div class="example-tile ex-present">I</div>
+                        <div class="example-tile ex-empty">L</div>
+                        <div class="example-tile ex-empty">O</div>
+                        <div class="example-tile ex-empty">T</div>
+                    </div>
+                    <p>The letter **I** is in the word but in the wrong spot.</p>
+
+                    <p><strong><span style="color: var(--color-absent);">Gray</span></strong> indicates the letter is not in the word in any spot.</p>
+                    <div class="example-row">
+                        <div class="example-tile ex-empty">V</div>
+                        <div class="example-tile ex-empty">A</div>
+                        <div class="example-tile ex-empty">G</div>
+                        <div class="example-tile ex-absent">U</div>
+                        <div class="example-tile ex-empty">E</div>
+                    </div>
+                    <p>The letter **U** is not in the word in any spot.</p>
+
+                    <hr style="border-color: var(--modal-border); margin: 20px 0;">
+                    <p>When you refresh the page, the word changes!</p>
+                `;
+                // Re-attach close button listener for dynamically updated content
+                document.getElementById('closeModalButton').addEventListener('click', () => {
+                    howToPlayModal.style.display = 'none';
+                });
+            }
+            initializeGame(); // Restart the game in the new mode
+        }
+
+        // --- Event Listeners ---
+
+        // Listen for physical keyboard presses
+        document.addEventListener('keydown', (e) => {
+            // Convert key to uppercase to match internal logic
+            handleKeyPress(e.key.toUpperCase());
+        });
+
+        // Listen for clicks on the on-screen keyboards
+        keyboardAlphabetic.addEventListener('click', (e) => {
+            if (e.target.classList.contains('key')) {
+                handleKeyPress(e.target.dataset.key);
+            }
+        });
+        keyboardNumeric.addEventListener('click', (e) => {
+            if (e.target.classList.contains('key')) {
+                handleKeyPress(e.target.dataset.key);
+            }
+        });
+
+        // Listen for click on the "Play Again" button
+        resetButton.addEventListener('click', initializeGame);
+
+        // How to Play Modal Event Listeners
+        howToPlayButton.addEventListener('click', () => {
+            howToPlayModal.style.display = 'flex'; // Show the modal
+        });
+
+        closeModalButton.addEventListener('click', () => {
+            howToPlayModal.style.display = 'none'; // Hide the modal
+        });
+
+        // Close modal if clicking outside the content
+        howToPlayModal.addEventListener('click', (e) => {
+            if (e.target === howToPlayModal) {
+                howToPlayModal.style.display = 'none';
+            }
+        });
+
+        // Mode Toggle Button Listener
+        modeToggleButton.addEventListener('click', switchGameMode);
+
+        // Initialize the game when the page loads
+        initializeGame();
+    </script>
+</body>
+</html>
